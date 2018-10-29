@@ -1,12 +1,14 @@
 package com.example;
 
+import java.lang.annotation.Documented;
+import java.lang.annotation.Retention;
 import java.lang.management.ManagementFactory;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
-import javax.inject.Named;
+import javax.inject.Qualifier;
 import javax.inject.Singleton;
 
 import org.apache.commons.logging.Log;
@@ -21,6 +23,7 @@ import org.springframework.web.reactive.function.server.RouterFunction;
 import org.springframework.web.reactive.function.server.RouterFunctions;
 import org.springframework.web.server.adapter.HttpWebHandlerAdapter;
 
+import static java.lang.annotation.RetentionPolicy.RUNTIME;
 import static org.springframework.web.reactive.function.server.RequestPredicates.POST;
 import static org.springframework.web.reactive.function.server.RouterFunctions.route;
 import static org.springframework.web.reactive.function.server.ServerResponse.ok;
@@ -49,11 +52,25 @@ public class DaggerApplication implements Function<String, String> {
 @Component(modules = FunctionEndpointFactory.class)
 @Singleton
 interface Main {
-	@Named("server")
+	@Server
 	Runnable server();
 
-	@Named("local-server-port")
+	@PortNumber
 	int port();
+}
+
+@Qualifier
+@Documented
+@Retention(RUNTIME)
+@interface PortNumber {
+	String value() default "local-server-port";
+}
+
+@Qualifier
+@Documented
+@Retention(RUNTIME)
+@interface Server {
+	String value() default "server";
 }
 
 @Module(includes = NettyServerFactory.class)
@@ -83,7 +100,7 @@ class NettyServerFactory {
 
 	@Provides
 	@Singleton
-	@Named("server")
+	@Server
 	public Runnable handler(ConfigurableEnvironment environment,
 			HttpWebHandlerAdapter handler) {
 		return () -> {
@@ -111,7 +128,7 @@ class NettyServerFactory {
 
 	@Provides
 	@Singleton
-	@Named("local-server-port")
+	@PortNumber
 	int port() {
 		try {
 			latch.await(100, TimeUnit.SECONDS);
