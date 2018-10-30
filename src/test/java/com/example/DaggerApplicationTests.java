@@ -16,13 +16,10 @@ public class DaggerApplicationTests {
 
 	@BeforeClass
 	public static void init() {
-		Main main = DaggerMain.builder()
-				.functionEndpointFactory(
-						new FunctionEndpointFactory(new DaggerApplication()))
-				.environmentFactory(new EnvironmentFactory("--server.port=0")).build();
+		Main main = DaggerMain.builder().function(new DaggerApplication())
+				.args("--server.port=0").build();
 		main.server().run();
 		port = main.port();
-		System.err.println("****************** " + port);
 	}
 
 	@Test

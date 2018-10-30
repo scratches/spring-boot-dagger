@@ -4,6 +4,7 @@ import java.lang.annotation.Documented;
 import java.lang.annotation.Retention;
 import java.lang.management.ManagementFactory;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
@@ -14,6 +15,7 @@ import javax.inject.Singleton;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
+import org.springframework.core.env.CommandLinePropertySource;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.SimpleCommandLinePropertySource;
 import org.springframework.core.env.StandardEnvironment;
@@ -28,6 +30,7 @@ import static org.springframework.web.reactive.function.server.RequestPredicates
 import static org.springframework.web.reactive.function.server.RouterFunctions.route;
 import static org.springframework.web.reactive.function.server.ServerResponse.ok;
 
+import dagger.BindsInstance;
 import dagger.Component;
 import dagger.Module;
 import dagger.Provides;
@@ -37,10 +40,8 @@ import reactor.netty.http.server.HttpServer;
 public class DaggerApplication implements Function<String, String> {
 
 	public static void main(String[] args) {
-		DaggerMain.builder()
-				.functionEndpointFactory(
-						new FunctionEndpointFactory(new DaggerApplication()))
-				.environmentFactory(new EnvironmentFactory(args)).build().server().run();
+		DaggerMain.builder().function(new DaggerApplication()).args(args).build().server()
+				.run();
 	}
 
 	@Override
@@ -57,6 +58,22 @@ interface Main {
 
 	@PortNumber
 	int port();
+
+	@Component.Builder
+	interface Builder {
+		Main build();
+
+		Builder functionEndpointFactory(FunctionEndpointFactory endpoints);
+
+		Builder environmentFactory(EnvironmentFactory endpoints);
+
+		@BindsInstance
+		Builder function(Function<String, String> function);
+
+		@BindsInstance
+		Builder args(@CommandLine String... args);
+	}
+
 }
 
 @Qualifier
@@ -69,6 +86,13 @@ interface Main {
 @Qualifier
 @Documented
 @Retention(RUNTIME)
+@interface CommandLine {
+	String value() default "command-line";
+}
+
+@Qualifier
+@Documented
+@Retention(RUNTIME)
 @interface Server {
 	String value() default "server";
 }
@@ -76,15 +100,9 @@ interface Main {
 @Module(includes = NettyServerFactory.class)
 class FunctionEndpointFactory {
 
-	private Function<String, String> function;
-
-	public FunctionEndpointFactory(Function<String, String> function) {
-		this.function = function;
-	}
-
 	@Provides
 	@Singleton
-	public RouterFunction<?> functionEndpoints() {
+	public RouterFunction<?> functionEndpoints(Function<String, String> function) {
 		return route(POST("/"), request -> ok()
 				.body(request.bodyToMono(String.class).map(function), String.class));
 	}
@@ -164,21 +182,22 @@ class NettyServerFactory {
 @Module
 class EnvironmentFactory {
 
-	private SimpleCommandLinePropertySource properties;
-
-	public EnvironmentFactory(String... args) {
+	@Provides
+	@Singleton
+	public Optional<CommandLinePropertySource<?>> properties(
+			@CommandLine String... args) {
 		if (args != null && args.length > 0) {
-			properties = new SimpleCommandLinePropertySource(args);
+			return Optional.of(new SimpleCommandLinePropertySource(args));
 		}
+		return Optional.empty();
 	}
 
 	@Provides
 	@Singleton
-	public ConfigurableEnvironment environment() {
+	public ConfigurableEnvironment environment(
+			Optional<CommandLinePropertySource<?>> properties) {
 		StandardEnvironment environment = new StandardEnvironment();
-		if (properties != null) {
-			environment.getPropertySources().addFirst(properties);
-		}
+		properties.ifPresent(source -> environment.getPropertySources().addFirst(source));
 		return environment;
 	}
 }
